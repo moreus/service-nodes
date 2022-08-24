@@ -20,9 +20,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.ArrayList;
-import java.util.Currency;
-import java.util.List;
 import java.util.UUID;
 
 @RestController
@@ -94,7 +91,7 @@ public class MyController1 {
         try (Scope scope = span.makeCurrent()) {
             span.addEvent("invoke service1 rollback");
             result = service.doRollback();
-            redisTemplate.delete(orderId);
+            //redisTemplate.delete(orderId);
         } catch (Exception e) {
             span.recordException(e);
         } finally {
