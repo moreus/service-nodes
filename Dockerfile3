@@ -1,0 +1,4 @@
+FROM openjdk:8-jdk-alpine
+COPY ./service-3rd-module/target/*.jar servce3.jar
+EXPOSE 8080
+ENTRYPOINT ["java","-jar","/servce3.jar"]

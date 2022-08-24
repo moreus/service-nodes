@@ -1,0 +1,131 @@
+version: '3.3'
+
+services:
+  nginx:
+    container_name: nginx
+    image: nginx:latest
+    restart: always
+    ports:
+      - 80:80
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf
+    networks:
+      - nodes
+#    network_mode: host
+    depends_on:
+      - service1
+      - service2
+      - service3
+      - service4
+      - service5
+  service1:
+    build: ./
+    image:   service1:latest
+    container_name: service1
+    ports:
+      - 8081:8080
+    depends_on:
+      - service2
+    networks:
+      - nodes
+    links:
+      - redis
+#    network_mode: host
+  service2:
+    build: ./
+    image:   service2:latest
+    container_name: service2
+    ports:
+      - 8082:8080
+    depends_on:
+      - service3
+      - redis
+    networks:
+      - nodes
+
+#    network_mode: host
+  service3:
+    build: ./
+    image:   service3:latest
+    container_name: service3
+    ports:
+      - 8083:8080
+    networks:
+      - nodes
+
+#    network_mode: host
+  service4:
+    build: ./
+    image:   service4:latest
+    container_name: service4
+    ports:
+      - 8084:8080
+    networks:
+      - nodes
+#    network_mode: host
+
+  service5:
+    build: ./
+    image:   service5:latest
+    container_name: service5
+    ports:
+      - 8085:8080
+#    network_mode: host
+    networks:
+      - nodes
+  redis:
+    image: redis:3
+    container_name: redis3
+    restart: always
+    ports:
+      - 6379:6379
+    networks:
+      - nodes
+
+  jaeger-all-in-one:
+    image: jaegertracing/all-in-one:latest
+    ports:
+      - 5775:5775/udp
+      - 6831:6831/udp
+      - 6832:6832/udp
+      - 5778:5778
+      - 16686:16686
+      - 14250:14250
+      - 14268:14268
+      - 14269:14269
+      - 9411:9411
+    networks:
+      - nodes
+  #        network_mode: host
+  # Collector
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib-dev:latest
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml
+    ports:
+      - "1888:1888"   # pprof extension
+      - "8888:8888"   # Prometheus metrics exposed by the collector
+      - "8889:8889"   # Prometheus exporter metrics
+      - "13133:13133" # health_check extension
+      - "4317"        # OTLP gRPC receiver
+      - "55680:55680" # zpages extension
+    networks:
+      - nodes
+    depends_on:
+      - jaeger-all-in-one
+
+  prometheus:
+    container_name: prometheus
+    image: prom/prometheus:latest
+    volumes:
+      - ./prometheus.yaml:/etc/prometheus/prometheus.yml
+    networks:
+      - nodes
+    ports:
+      - "9090:9090"
+      - "9464:9464"
+
+networks:
+  nodes:
+    driver: bridge

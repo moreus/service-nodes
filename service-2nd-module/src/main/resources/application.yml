@@ -1,0 +1,11 @@
+spring:
+  redis:
+    host: redis3
+    port: 6379
+extra:
+  host: EXTRA_HOST
+trace:
+  exporter:
+    host: host.docker.internal
+    port: 14250
+    uiPort: 16686
