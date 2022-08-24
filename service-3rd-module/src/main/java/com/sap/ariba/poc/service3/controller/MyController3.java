@@ -52,4 +52,33 @@ public class MyController3 {
         }
         return result;
     }
+
+    @GetMapping("/rollback")
+    public String rollback(@RequestHeader Map<String, String> headers) {
+        logger.info("rollback service 3 {}", headers);
+        String correlationId = headers.get("correlationid");
+        MDC.put("correlationId", correlationId);
+
+        String traceId = headers.get("traceid");
+        String spanId = headers.get("spanid");
+        SpanContext remoteContext = SpanContext.createFromRemoteParent(
+                traceId,
+                spanId,
+                TraceFlags.getSampled(),
+                TraceState.getDefault());
+        logger.info("Span Context in service 3 rollback: {}.", remoteContext);
+
+        Tracer tracer = appConfig.getOpenTelemetry().getTracer("Service 3 rollback");
+        Span span = tracer.spanBuilder("rollback").setParent(Context.current().with(Span.wrap(remoteContext))).startSpan();
+        span.setAttribute("correlationId", correlationId);
+        String result = "";
+        try(Scope scope = span.makeCurrent()) {
+            span.addEvent("invoke myService 3 rollback");
+            result = service.doRollback();
+            logger.info("New Span Context in rollback: {}.", span.getSpanContext());
+        } finally {
+            span.end();
+        }
+        return result;
+    }
 }

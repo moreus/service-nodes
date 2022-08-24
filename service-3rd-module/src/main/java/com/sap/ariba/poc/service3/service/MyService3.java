@@ -54,4 +54,35 @@ public class MyService3 {
         }
         return "invoke my service 3";
     }
+
+    public String doRollback(){
+        String correlationId = MDC.get("correlationId");
+        logger.info("correlationId in myService 3 rollback: {}",correlationId);
+        Tracer tracer = appConfig.getOpenTelemetry().getTracer("MyService3 Rollback");
+        Span parentSpan = Span.current();
+        Span span = tracer.spanBuilder("myService 3 rollback").setParent(Context.current().with(Span.wrap(parentSpan.getSpanContext()))).startSpan();
+        SpanContext newSpanContext = span.getSpanContext();
+        span.setAttribute("correlationId", correlationId);
+        try (Scope scope = span.makeCurrent()){
+            String traceId = newSpanContext.getTraceId();
+            String spanId = newSpanContext.getSpanId();
+            HttpHeaders headers = new HttpHeaders(){{
+                set("traceId", traceId);
+                set("spanId", spanId);
+                set("traceFlags",newSpanContext.getTraceFlags().asHex());
+                newSpanContext.getTraceState().asMap().entrySet().stream().forEach(e -> set(e.getKey(), e.getValue()));
+                set("correlationId", correlationId);
+            }};
+            HttpEntity<String> httpEntity = new HttpEntity<>(headers);
+            logger.info("Headers: {}" ,headers);
+            span.addEvent("call srv4_api rollback");
+            ResponseEntity<String> response = restTemplate.exchange(Constants.DOCKER_INTERNAL_HOST + "/srv4/rollback", HttpMethod.GET, httpEntity, String.class);
+            logger.info("After invoke service 4 rollback, the result is {}", response.getBody());
+
+            logger.info("{}, {}, Now handle rollback business logic.", traceId, spanId);
+        } finally {
+            span.end();
+        }
+        return "invoke my service 3 rollback";
+    }
 }

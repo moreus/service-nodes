@@ -1,10 +1,13 @@
 package com.sap.ariba.poc.service1.otel;
 
-public class CustomContext {
+import java.io.Serializable;
+
+public class RollbackContext implements Serializable {
     private String traceId;
     private String spanId;
 
-    public CustomContext(String traceId, String spanId) {
+    public RollbackContext(){}
+    public RollbackContext(String traceId, String spanId) {
         this.traceId = traceId;
         this.spanId = spanId;
     }

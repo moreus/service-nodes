@@ -1,19 +1,28 @@
 package com.sap.ariba.poc.service1.controller;
 
 import com.sap.ariba.poc.service1.config.AppConfig;
+import com.sap.ariba.poc.service1.exception.BadRequestException;
+import com.sap.ariba.poc.service1.exception.OrderIdNotExistException;
+import com.sap.ariba.poc.service1.otel.RollbackContext;
 import com.sap.ariba.poc.service1.service.MyService1;
-import io.opentelemetry.api.trace.Span;
-import io.opentelemetry.api.trace.Tracer;
+import io.opentelemetry.api.trace.*;
+import io.opentelemetry.context.Context;
 import io.opentelemetry.context.Scope;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.ArrayList;
+import java.util.Currency;
+import java.util.List;
 import java.util.UUID;
 
 @RestController
@@ -26,26 +35,73 @@ public class MyController1 {
     @Autowired
     private MyService1 service;
 
-
     @Autowired
     private RedisTemplate<String, Object> redisTemplate;
 
     @GetMapping("/api")
-    public String api_1() {
+    public ResponseEntity<String> api_1(@RequestParam("orderId") String orderId) {
+        Tracer tracer = appConfig.getOpenTelemetry().getTracer("MyService1");
+        if (redisTemplate.hasKey(orderId)) {
+            Span exceptionSpan = tracer.spanBuilder("order_document_created_exception").startSpan();
+            BadRequestException e = new BadRequestException("order_document_created_exception");
+            exceptionSpan.recordException(e);
+            exceptionSpan.end();
+            return new ResponseEntity("Bad Request, Order Document is created.", HttpStatus.BAD_REQUEST);
+        }
         String correlationId = UUID.randomUUID().toString();
         MDC.put("correlationId", correlationId);
         logger.info("correlationId: {}", correlationId);
-        Tracer tracer = appConfig.getOpenTelemetry().getTracer("MyService1");
+
         Span span = tracer.spanBuilder("api_1").startSpan();
         span.setAttribute("correlationId", correlationId);
         String result = "";
         try (Scope scope = span.makeCurrent()){
             span.addEvent("invoke service1");
-            result  = service.myService1();
+            result  = service.handleBusinessLogic();
+        } finally {
+            SpanContext spanContext = span.getSpanContext();
+            redisTemplate.opsForValue().set(orderId, new RollbackContext(spanContext.getTraceId(), spanContext.getSpanId()));
+            span.end();
+        }
+        return new ResponseEntity(result, HttpStatus.OK);
+    }
+
+    @GetMapping("/rollback")
+    public ResponseEntity<String> rollback(@RequestParam("orderId") String orderId) {
+        Tracer tracer = appConfig.getOpenTelemetry().getTracer("MyService1_Rollback");
+        if (!redisTemplate.hasKey(orderId)) {
+            Span exceptionSpan = tracer.spanBuilder("rollback_exception").startSpan();
+            OrderIdNotExistException e = new OrderIdNotExistException("Order Id is not exist");
+            exceptionSpan.recordException(e);
+            exceptionSpan.end();
+            return new ResponseEntity("Order Id is not exist", HttpStatus.NOT_FOUND);
+        }
+
+        RollbackContext context = (RollbackContext) redisTemplate.opsForValue().get(orderId);
+        String correlationId = UUID.randomUUID().toString();
+        MDC.put("correlationId", correlationId);
+        logger.info("correlationId: {}", correlationId);
+
+        SpanContext businessContext = SpanContext.createFromRemoteParent(
+                context.getTraceId(),
+                context.getSpanId(),
+                TraceFlags.getSampled(),
+                TraceState.getDefault());
+
+        Span span = tracer.spanBuilder("rollback").setParent(Context.current().with(Span.wrap(businessContext))).startSpan();
+        span.setAttribute("correlationId", correlationId);
+        String result = "";
+        try (Scope scope = span.makeCurrent()) {
+            span.addEvent("invoke service1 rollback");
+            result = service.doRollback();
+            redisTemplate.delete(orderId);
+        } catch (Exception e) {
+            span.recordException(e);
         } finally {
             span.end();
         }
-        return result;
+
+        return new ResponseEntity("invoke service1 rollback", HttpStatus.OK);
     }
 
 }

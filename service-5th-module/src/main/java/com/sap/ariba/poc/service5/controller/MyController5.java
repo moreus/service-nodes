@@ -9,6 +9,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -27,6 +28,7 @@ public class MyController5 {
     private AppConfig appConfig;
 
     @GetMapping("/api")
+    @Async
     public String api_5(@RequestHeader Map<String, String> headers) {
         logger.info("Request Headers from service1 {}", headers);
         String correlationId = headers.get("correlationid");
@@ -49,6 +51,35 @@ public class MyController5 {
             result = service.myService5();
             logger.info("New Span Context in api_5: {}.", span.getSpanContext());
         }  finally {
+            span.end();
+        }
+        return result;
+    }
+
+    @GetMapping("/rollback")
+    public String rollback(@RequestHeader Map<String, String> headers) {
+        logger.info("rollback service 5 {}", headers);
+        String correlationId = headers.get("correlationid");
+        MDC.put("correlationId", correlationId);
+
+        String traceId = headers.get("traceid");
+        String spanId = headers.get("spanid");
+        SpanContext remoteContext = SpanContext.createFromRemoteParent(
+                traceId,
+                spanId,
+                TraceFlags.getSampled(),
+                TraceState.getDefault());
+        logger.info("Span Context in service 5 rollback: {}.", remoteContext);
+
+        Tracer tracer = appConfig.getOpenTelemetry().getTracer("Service 5 rollback");
+        Span span = tracer.spanBuilder("rollback").setParent(Context.current().with(Span.wrap(remoteContext))).startSpan();
+        span.setAttribute("correlationId", correlationId);
+        String result = "";
+        try(Scope scope = span.makeCurrent()) {
+            span.addEvent("invoke myService 5 rollback");
+            result = service.doRollback();
+            logger.info("New Span Context in rollback: {}.", span.getSpanContext());
+        } finally {
             span.end();
         }
         return result;
