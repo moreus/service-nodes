@@ -1,6 +1,7 @@
 package com.sap.ariba.poc.service2.controller;
 
 import com.sap.ariba.poc.service2.config.AppConfig;
+import com.sap.ariba.poc.service2.otel.TracingContext;
 import com.sap.ariba.poc.service2.service.MyService2;
 import io.opentelemetry.api.trace.*;
 import io.opentelemetry.context.Context;
@@ -9,6 +10,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpHeaders;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -26,23 +28,20 @@ public class MyController2 {
     @Autowired
     private AppConfig appConfig;
 
+    @Autowired
+    private TracingContext tracingContext;
+
     @GetMapping("/api")
-    public String api_2(@RequestHeader Map<String, String> headers) {
+    public String api_2(@RequestHeader HttpHeaders headers) {
         logger.info("Request Headers from service1 {}", headers);
-        String correlationId = headers.get("correlationid");
+        String correlationId = headers.get("correlationid").get(0);
         MDC.put("correlationId", correlationId);
 
-        String traceId = headers.get("traceid");
-        String spanId = headers.get("spanid");
-        SpanContext remoteContext = SpanContext.createFromRemoteParent(
-                traceId,
-                spanId,
-                TraceFlags.getSampled(),
-                TraceState.getDefault());
-        logger.info("Span Context in api_2: {}.", remoteContext);
+        tracingContext.extract(headers);
 
         Tracer tracer = appConfig.getOpenTelemetry().getTracer("MyService2");
-        Span span = tracer.spanBuilder("api_2").setParent(Context.current().with(Span.wrap(remoteContext))).startSpan();
+        Span span = tracer.spanBuilder("api_2").setParent(tracingContext.getContext()).startSpan();
+        logger.info("Span from Context in api_2: {}.", span.getSpanContext());
         span.setAttribute("correlationId", correlationId);
         String result = "";
         try(Scope scope = span.makeCurrent()) {

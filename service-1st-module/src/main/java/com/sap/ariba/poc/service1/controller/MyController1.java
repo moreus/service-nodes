@@ -3,7 +3,7 @@ package com.sap.ariba.poc.service1.controller;
 import com.sap.ariba.poc.service1.config.AppConfig;
 import com.sap.ariba.poc.service1.exception.BadRequestException;
 import com.sap.ariba.poc.service1.exception.OrderIdNotExistException;
-import com.sap.ariba.poc.service1.otel.RollbackContext;
+import com.sap.ariba.poc.service1.otel.AppContext;
 import com.sap.ariba.poc.service1.service.MyService1;
 import io.opentelemetry.api.trace.*;
 import io.opentelemetry.context.Context;
@@ -38,13 +38,12 @@ public class MyController1 {
     @GetMapping("/api")
     public ResponseEntity<String> api_1(@RequestParam("orderId") String orderId) {
         Tracer tracer = appConfig.getOpenTelemetry().getTracer("MyService1");
+
         if (redisTemplate.hasKey(orderId)) {
-            Span exceptionSpan = tracer.spanBuilder("order_document_created_exception").startSpan();
-            BadRequestException e = new BadRequestException("order_document_created_exception");
-            exceptionSpan.recordException(e);
-            exceptionSpan.end();
+            handleBadRequest(tracer);
             return new ResponseEntity("Bad Request, Order Document is created.", HttpStatus.BAD_REQUEST);
         }
+
         String correlationId = UUID.randomUUID().toString();
         MDC.put("correlationId", correlationId);
         logger.info("correlationId: {}", correlationId);
@@ -57,10 +56,19 @@ public class MyController1 {
             result  = service.handleBusinessLogic();
         } finally {
             SpanContext spanContext = span.getSpanContext();
-            redisTemplate.opsForValue().set(orderId, new RollbackContext(spanContext.getTraceId(), spanContext.getSpanId()));
+            AppContext context = new AppContext(spanContext.getTraceId(), spanContext.getSpanId(), correlationId);
+            logger.info("App Context: {}，{}, {}", spanContext.getTraceId(), spanContext.getSpanId(), correlationId);
+            redisTemplate.opsForValue().set(orderId, context);
             span.end();
         }
         return new ResponseEntity(result, HttpStatus.OK);
+    }
+
+    private static void handleBadRequest(Tracer tracer) {
+        Span exceptionSpan = tracer.spanBuilder("order_document_created_exception").startSpan();
+        BadRequestException e = new BadRequestException("order_document_created_exception");
+        exceptionSpan.recordException(e);
+        exceptionSpan.end();
     }
 
     @GetMapping("/rollback")
@@ -74,10 +82,10 @@ public class MyController1 {
             return new ResponseEntity("Order Id is not exist", HttpStatus.NOT_FOUND);
         }
 
-        RollbackContext context = (RollbackContext) redisTemplate.opsForValue().get(orderId);
+        AppContext context = (AppContext) redisTemplate.opsForValue().get(orderId);
         String correlationId = UUID.randomUUID().toString();
         MDC.put("correlationId", correlationId);
-        logger.info("correlationId: {}", correlationId);
+        logger.info("App Context: {}", context);
 
         SpanContext businessContext = SpanContext.createFromRemoteParent(
                 context.getTraceId(),

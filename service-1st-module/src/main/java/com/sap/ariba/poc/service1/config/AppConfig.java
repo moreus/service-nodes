@@ -1,6 +1,5 @@
 package com.sap.ariba.poc.service1.config;
 
-import com.sap.ariba.poc.service1.otel.TextMapGetterImpl;
 import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.trace.propagation.W3CTraceContextPropagator;
@@ -20,7 +19,6 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.client.RestTemplate;
 
-import javax.servlet.http.HttpServletRequest;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
@@ -31,6 +29,7 @@ public class AppConfig {
     private TraceConfig config;
 
     private OpenTelemetry openTelemetry;
+
     /**
      * Initializes the OpenTelemetry SDK with a logging span exporter and the W3C Trace Context
      * propagator.
@@ -40,6 +39,8 @@ public class AppConfig {
     @Bean
     @ConditionalOnBean(TraceConfig.class)
     public OpenTelemetry initOpenTelemetry() {
+
+
         // Use Jaeger Exporter
         SpanProcessor spanProcessor = getJaegerGrpcSpanProcessor();
 
@@ -100,9 +101,4 @@ public class AppConfig {
                 );
     }
 
-    public Context extractContextFromHttpRequest(HttpServletRequest request) {
-        return openTelemetry.getPropagators()
-                .getTextMapPropagator()
-                .extract(Context.current(), request, new TextMapGetterImpl());
-    }
 }

@@ -3,6 +3,7 @@ package com.sap.ariba.poc.service1.service;
 
 import com.sap.ariba.poc.common.Constants;
 import com.sap.ariba.poc.service1.config.AppConfig;
+import com.sap.ariba.poc.service1.otel.TracingContext;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.SpanContext;
 import io.opentelemetry.api.trace.Tracer;
@@ -33,6 +34,10 @@ public class MyService1 {
     @Autowired
     private RedisTemplate<String, Object> redisTemplate;
 
+
+    @Autowired
+    private TracingContext context;
+
     public String handleBusinessLogic() {
         String correlationId = MDC.get("correlationId");
         MDC.remove("correlationId");
@@ -44,14 +49,13 @@ public class MyService1 {
         try(Scope scope = span.makeCurrent()) {
             String traceId = newSpanContext.getTraceId();
             String spanId = newSpanContext.getSpanId();
+
             HttpHeaders headers = new HttpHeaders(){{
-                set("traceId", traceId);
-                set("spanId", spanId);
-                set("traceFlags",newSpanContext.getTraceFlags().asHex());
-                newSpanContext.getTraceState().asMap().entrySet().stream().forEach(e -> set(e.getKey(), e.getValue()));
                 set("correlationId", correlationId);
             }};
-            HttpEntity<String> httpEntity = new HttpEntity<>(headers);
+
+            HttpHeaders newHeaders = context.inject(headers);
+            HttpEntity<String> httpEntity = new HttpEntity<>(newHeaders);
             logger.info("Headers: {}" ,headers);
             span.addEvent("call srv2_api");
 
@@ -82,6 +86,8 @@ public class MyService1 {
         try(Scope scope = span.makeCurrent()) {
             String traceId = newSpanContext.getTraceId();
             String spanId = newSpanContext.getSpanId();
+
+
             HttpHeaders headers = new HttpHeaders(){{
                 set("traceId", traceId);
                 set("spanId", spanId);
@@ -89,6 +95,7 @@ public class MyService1 {
                 newSpanContext.getTraceState().asMap().entrySet().stream().forEach(e -> set(e.getKey(), e.getValue()));
                 set("correlationId", correlationId);
             }};
+
             HttpEntity<String> httpEntity = new HttpEntity<>(headers);
             logger.info("Headers: {}" ,headers);
             span.addEvent("call srv2_api rollback");

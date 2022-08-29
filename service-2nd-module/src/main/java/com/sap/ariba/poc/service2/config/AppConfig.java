@@ -1,6 +1,5 @@
 package com.sap.ariba.poc.service2.config;
 
-import com.sap.ariba.poc.service2.otel.TextMapGetterImpl;
 import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.trace.propagation.W3CTraceContextPropagator;
@@ -98,11 +97,5 @@ public class AppConfig {
                         headers,
                         (carrier, key, value) -> carrier.put(key, value)
                 );
-    }
-
-    public Context extractContextFromHttpRequest(HttpServletRequest request) {
-        return openTelemetry.getPropagators()
-                .getTextMapPropagator()
-                .extract(Context.current(), request, new TextMapGetterImpl());
     }
 }
